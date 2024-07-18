@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  mdh_discord:
+    image: peterwilli/mdh-discord-bot
+    restart: unless-stopped
+    volumes:
+      - "./mdh_discord:/storage/mdh_discord:ro"
+      - "./hummingbot_files/data:/storage/data:ro"
+    command: "--config-path /storage/mdh_discord/config.yml"
+    logging:
+      driver: "json-file"
+      options:
+          max-size: "10m"
+          max-file: "5"
