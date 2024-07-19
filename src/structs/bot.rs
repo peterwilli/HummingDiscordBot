@@ -1,5 +1,5 @@
 use anyhow::{Ok, Result};
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow};
 
 use crate::backend_api::client::BackendAPIClient;
 
@@ -23,10 +23,10 @@ impl<'c> Bot<'c> {
         let trade = client.get_latest_trade(&self.name).await?;
         match trade {
             Some(trade) => {
-                return Ok(Some(trade.to_internal_trade()?));
+                Ok(Some(trade.to_internal_trade()?))
             }
             None => {
-                return Ok(None);
+                Ok(None)
             }
         }
     }

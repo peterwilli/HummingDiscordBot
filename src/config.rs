@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::PathBuf, str::FromStr};
+use std::{borrow::Cow};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -13,10 +13,10 @@ pub struct Config<'c> {
 
 impl<'c> Default for Config<'c> {
     fn default() -> Self {
-        return Self {
+        Self {
             bot_token: "MY_TOKEN".into(),
             stats_channel_id: 39923329,
             backend_api_base_url: Url::parse("http://localhost:8084").unwrap(),
-        };
+        }
     }
 }

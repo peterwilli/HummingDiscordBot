@@ -72,6 +72,6 @@ impl<'c> ProfitChartRenderer for profit_chart::ChartData<'c> {
             true,
         )?;
         shall_exit.store(true, atomic::Ordering::Relaxed);
-        return Ok(chart_screenshot);
+        Ok(chart_screenshot)
     }
 }

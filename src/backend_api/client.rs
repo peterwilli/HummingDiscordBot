@@ -30,7 +30,7 @@ impl BackendAPIClient {
             .await?
             .json::<ActiveBotsResponse>()
             .await?;
-        return Ok(json);
+        Ok(json)
     }
 
     pub async fn get_latest_trade(&self, bot_name: &str) -> Result<Option<Trade>> {
@@ -52,6 +52,6 @@ impl BackendAPIClient {
             .json::<TradesResponse>()
             .await?;
 
-        return Ok(json.response.trades);
+        Ok(json.response.trades)
     }
 }

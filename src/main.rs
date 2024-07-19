@@ -11,12 +11,12 @@ use args::Args;
 use backend_api::client::BackendAPIClient;
 use clap::Parser;
 use config::Config;
-use debounced::debounced;
-use futures::SinkExt;
+
+
 use futures::StreamExt;
-use log::debug;
+
 use log::error;
-use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Watcher};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::ChannelId;
 use poise::serenity_prelude::CreateAttachment;
@@ -25,11 +25,11 @@ use poise::serenity_prelude::CreateMessage;
 use rust_decimal::prelude::*;
 use std::fs;
 use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
+
+
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+
 use structs::extensions::converter::BotsConverter;
 use structs::trade::TradeSide;
 
@@ -138,7 +138,7 @@ async fn notify_trade<'c>(
         ]);
     let builder = CreateMessage::new().add_embed(embed);
     channel.send_message(ctx, builder).await?;
-    return Ok(());
+    Ok(())
 }
 
 async fn trade_loop<'c>(
@@ -175,7 +175,7 @@ async fn trade_loop<'c>(
             }
         });
     }
-    return Ok(());
+    Ok(())
 }
 
 fn init_config<'c>(path: &PathBuf) -> Result<Config<'c>> {
@@ -183,16 +183,16 @@ fn init_config<'c>(path: &PathBuf) -> Result<Config<'c>> {
         let bytes = std::fs::read(path)?;
         let contents = String::from_utf8_lossy(&bytes);
         let config: Config = serde_yaml::from_str(&contents)?;
-        return Ok(config);
+        Ok(config)
     } else {
         let default_config = Config::default();
         let yaml_config = serde_yaml::to_string(&default_config)?;
         fs::create_dir_all(path.parent().unwrap())?;
-        std::fs::write(&path, &yaml_config)?;
-        return Err(anyhow!(
+        std::fs::write(path, yaml_config)?;
+        Err(anyhow!(
             "No config file found, default file created at {}!",
             path.display()
-        ));
+        ))
     }
 }
 
