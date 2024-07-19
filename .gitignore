@@ -1,5 +1,7 @@
 /target
 /hummingbot_files
 /mdh_discord
+/bot_cache
 audit.json
+config.yml
 docker-compose.yml

@@ -14,7 +14,7 @@ pub trait ProfitChartRenderer {
     fn render_chart(&self) -> Result<Vec<u8>>;
 }
 
-impl<'c> ProfitChartRenderer for profit_chart::ChartData<'c> {
+impl ProfitChartRenderer for profit_chart::ChartData {
     fn render_chart(&self) -> Result<Vec<u8>> {
         let responder = move |r: tiny_http::Request| {
             let html = include_str!("../../../resources/balance_chart/dist/index.html");
@@ -52,12 +52,13 @@ impl<'c> ProfitChartRenderer for profit_chart::ChartData<'c> {
         tab.set_transparent_background_color()?;
         let port = server.server_addr().to_ip().unwrap().port();
         let chart_json = serde_json::to_string(&self)?;
-        debug!("chart_json: {}", chart_json);
-        tab.navigate_to(&format!(
+        let url = format!(
             "http://localhost:{}#{}",
             port,
             urlencoding::encode(&chart_json)
-        ))?;
+        );
+        debug!("Navigating to: {}", url);
+        tab.navigate_to(&url)?;
         tab.wait_until_navigated()?;
         let chart_screenshot = tab.capture_screenshot(
             Page::CaptureScreenshotFormatOption::Png,

@@ -1,6 +1,6 @@
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -9,10 +9,8 @@ pub struct ChartDataEntry {
     pub profit: Decimal,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct ChartData<'c> {
-    pub bot_name: Cow<'c, str>,
-    pub base_asset: Cow<'c, str>,
-    pub chart_data: Vec<ChartDataEntry>,
+pub struct ChartData {
+    pub chart_data: HashMap<String, Vec<ChartDataEntry>>,
 }

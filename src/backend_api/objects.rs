@@ -1,45 +1,45 @@
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CloseTypeCounts {
     #[serde(rename = "CloseType.EARLY_STOP")]
-    pub early_stop: u32,
+    pub early_stop: u64,
     #[serde(rename = "CloseType.TIME_LIMIT")]
-    pub time_limit: u32,
+    pub time_limit: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Performance {
-    pub status: String,
-    pub realized_pnl_quote: f64,
-    pub unrealized_pnl_quote: f64,
-    pub unrealized_pnl_pct: f64,
-    pub realized_pnl_pct: f64,
-    pub global_pnl_quote: f64,
-    pub global_pnl_pct: f64,
-    pub volume_traded: f64,
-    pub open_order_volume: f64,
-    pub inventory_imbalance: f64,
+    pub realized_pnl_quote: Decimal,
+    pub unrealized_pnl_quote: Decimal,
+    pub unrealized_pnl_pct: Decimal,
+    pub realized_pnl_pct: Decimal,
+    pub global_pnl_quote: Decimal,
+    pub global_pnl_pct: Decimal,
+    pub volume_traded: Decimal,
+    pub open_order_volume: Decimal,
+    pub inventory_imbalance: Decimal,
     pub close_type_counts: CloseTypeCounts,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct BotPerformance {
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Controller {
     pub status: String,
     pub performance: Performance,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Data {
-    #[serde(flatten)]
-    pub bots: HashMap<String, BotPerformance>,
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Bot {
+    pub status: String,
+    pub performance: HashMap<String, Controller>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ActiveBotsResponse {
     pub status: String,
-    pub data: Data,
+    pub data: HashMap<String, Bot>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

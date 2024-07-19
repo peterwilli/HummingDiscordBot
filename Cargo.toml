@@ -28,6 +28,9 @@ urlencoding = "2.1.3"
 url = "2.5.2"
 reqwest = { version = "0.12.5", features = ["json"] }
 test-log = "0.2.16"
+rust_decimal_macros = "1.35.0"
+tokio-cron-scheduler = "0.10.2"
+regex = "1.10.5"
 
 [features]
 fetch_chrome = ["headless_chrome/fetch"]

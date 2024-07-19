@@ -16,3 +16,10 @@ async fn test_trade_api() {
     println!("{:?}", trade);
     println!("{:?}", trade.to_internal_trade());
 }
+
+#[test(tokio::test)]
+async fn test_bots_api() {
+    let client = BackendAPIClient::new(Url::from_str("http://localhost:8084").unwrap());
+    let bots = client.get_bots().await.unwrap();
+    println!("{:?}", bots);
+}

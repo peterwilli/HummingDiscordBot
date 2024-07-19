@@ -30,6 +30,13 @@ const colors = {
     default: "rgba(80, 102, 120, 1)",
     quarter: "rgba(80, 102, 120, 0.25)",
   },
+  lines: [
+    "#FF69B4", // pink
+    "#33CC33", // green
+    "#0066FF", // blue
+    "#FFCC00", // orange
+    "#0099CC", // teal
+  ]
 };
 const botDataStr = decodeURIComponent(window.location.hash.substring(1));
 const botData = JSON.parse(botDataStr);
@@ -63,13 +70,14 @@ Chart.defaults.color = "#ddd";
 const options = {
   type: "line",
   data: {
-    datasets: [
-      {
-        label: botData.baseAsset,
+    datasets: Object.keys(botData.chartData).map((controllerName, index) => {
+      const color = colors.lines[index % colors.lines.length];
+      return {
+        label: controllerName,
         backgroundColor: gradient,
         pointRadius: 0,
-        borderColor: colors.purple.default,
-        data: botData.chartData.map((entry) => {
+        borderColor: color,
+        data: botData.chartData[controllerName].map((entry) => {
           return {
             x: entry.timestamp,
             y: parseFloat(entry.profit),
@@ -77,8 +85,8 @@ const options = {
         }),
         lineTension: 0.1,
         borderWidth: 2,
-      },
-    ],
+      };
+    }),
   },
   options: {
     animation: false,
@@ -113,7 +121,7 @@ const options = {
       y: {
         title: {
           display: true,
-          text: "Profit (Price)",
+          text: "Profit (%)",
         },
       },
     },
