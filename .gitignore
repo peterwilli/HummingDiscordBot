@@ -1,4 +1,5 @@
 /target
 /hummingbot_files
 /mdh_discord
+audit.json
 docker-compose.yml

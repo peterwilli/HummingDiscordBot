@@ -1,22 +1,14 @@
 use std::{borrow::Cow, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct BotEntry<'c> {
-    pub name: Cow<'c, str>,
-    /// For profit tracking
-    pub base_asset: Cow<'c, str>,
-    pub trades_path: PathBuf,
-}
+use url::Url;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config<'c> {
     pub bot_token: Cow<'c, str>,
     pub stats_channel_id: u64,
-    pub bots: Vec<BotEntry<'c>>,
+    pub backend_api_base_url: Url,
 }
 
 impl<'c> Default for Config<'c> {
@@ -24,11 +16,7 @@ impl<'c> Default for Config<'c> {
         return Self {
             bot_token: "MY_TOKEN".into(),
             stats_channel_id: 39923329,
-            bots: vec![BotEntry {
-                name: "TheBot".into(),
-                base_asset: "USDT".into(),
-                trades_path: PathBuf::from_str("/tmp/trades.csv").unwrap(),
-            }],
+            backend_api_base_url: Url::parse("http://localhost:8084").unwrap(),
         };
     }
 }

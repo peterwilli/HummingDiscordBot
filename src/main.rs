@@ -1,15 +1,21 @@
 mod args;
+mod backend_api;
 mod config;
 mod structs;
+#[cfg(test)]
+mod tests;
+
 use anyhow::anyhow;
 use anyhow::Result;
 use args::Args;
+use backend_api::client::BackendAPIClient;
 use clap::Parser;
 use config::Config;
 use debounced::debounced;
 use futures::SinkExt;
 use futures::StreamExt;
 use log::debug;
+use log::error;
 use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::ChannelId;
@@ -22,16 +28,18 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
+use structs::extensions::converter::BotsConverter;
 use structs::trade::TradeSide;
 
 use crate::structs::extensions::profit_chart_renderer::ProfitChartRenderer;
-use crate::structs::extensions::trade_csv_parser::TradeCSVParser;
 use crate::structs::profit_chart;
 use crate::structs::trade::Trade;
 
 struct Data<'c> {
     config: Config<'c>,
+    client: Arc<BackendAPIClient>,
 } // User data, which is stored and accessible in all command invocations
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'c, 'a> = poise::Context<'a, Data<'c>, Error>;
@@ -41,24 +49,28 @@ type Context<'c, 'a> = poise::Context<'a, Data<'c>, Error>;
 async fn profit_chart(ctx: Context<'_, '_>) -> Result<(), Error> {
     let reply = ctx.reply("Starting to post the charts!").await?;
     let data = ctx.data();
-    for (idx, bot) in data.config.bots.iter().enumerate() {
-        let file_str = fs::read_to_string(&bot.trades_path)?;
+    let bots = data.client.get_bots().await?;
+    let bots = bots.to_internal_bots()?;
+    for (idx, bot) in bots.iter().enumerate() {
         reply
             .edit(
                 ctx,
                 poise::CreateReply::default().content(format!(
                     "Posting chart {}/{}",
                     idx + 1,
-                    data.config.bots.len()
+                    bots.len()
                 )),
             )
             .await?;
         let mut current_buy = Decimal::zero();
         let mut total_profit = Decimal::zero();
-        let chart_data = file_str
-            .lines()
-            .skip(1)
-            .map(|line| Trade::from_line(line).unwrap())
+        let trades = bot.get_trades(&data.client).await?;
+        let first_trade = match trades.first() {
+            Some(trade) => trade,
+            None => continue,
+        };
+        let chart_data = trades
+            .iter()
             .filter_map(|trade| match trade.side {
                 TradeSide::Buy => {
                     current_buy = trade.amount * trade.price;
@@ -76,11 +88,10 @@ async fn profit_chart(ctx: Context<'_, '_>) -> Result<(), Error> {
                 }
             })
             .collect::<Vec<profit_chart::ChartDataEntry>>();
-        drop(file_str);
         let chart = profit_chart::ChartData {
             chart_data,
-            base_asset: bot.base_asset.to_owned(),
-            bot_name: bot.name.to_owned(),
+            base_asset: first_trade.quote_asset.clone(),
+            bot_name: bot.name.clone(),
         };
         let png_data = chart.render_chart()?;
         ctx.channel_id()
@@ -130,47 +141,39 @@ async fn notify_trade<'c>(
     return Ok(());
 }
 
-async fn trade_loop<'c>(ctx: &poise::serenity_prelude::Context, config: &Config<'c>) -> Result<()> {
-    for bot in config.bots.iter() {
-        let (mut tx, rx) = futures::channel::mpsc::channel(16);
-        let mut debounced = debounced(rx, Duration::from_secs(1));
-        let mut watcher = RecommendedWatcher::new(
-            move |res| {
-                futures::executor::block_on(async {
-                    tx.send(res).await.unwrap();
-                })
-            },
-            NotifyConfig::default(),
-        )?;
-
-        let mut last_file_len = fs::metadata(&bot.trades_path).unwrap().len();
-        let trades_path = bot.trades_path.clone();
+async fn trade_loop<'c>(
+    ctx: &poise::serenity_prelude::Context,
+    config: &Config<'c>,
+    client: Arc<BackendAPIClient>,
+) -> Result<()> {
+    let bots = client.get_bots().await?.to_internal_bots()?;
+    for bot in bots.into_iter() {
         let ctx = ctx.clone();
         let stats_channel = ChannelId::new(config.stats_channel_id);
         let bot_name = bot.name.to_string();
+        let client = client.clone();
         tokio::spawn(async move {
-            watcher
-                .watch(&trades_path, RecursiveMode::NonRecursive)
-                .unwrap();
             loop {
-                let event = debounced.next().await;
-                if event.is_none() {
-                    continue;
+                let latest_trade = bot.get_latest_trade(&client).await;
+                match latest_trade {
+                    Ok(trade) => {
+                        let trade = match trade {
+                            Some(trade) => trade,
+                            None => {
+                                continue;
+                            }
+                        };
+
+                        notify_trade(&ctx, &bot_name, &stats_channel, trade)
+                            .await
+                            .unwrap();
+                    }
+                    Err(e) => {
+                        error!("Error getting latest trade for bot {}: {}", bot_name, e);
+                    }
                 }
-                let mut file = fs::File::open(&trades_path).unwrap();
-                file.seek(SeekFrom::Start(last_file_len)).unwrap();
-                let mut buf = vec![0u8; (file.metadata().unwrap().len() - last_file_len) as usize];
-                file.read_exact(&mut buf).unwrap();
-                last_file_len = file.metadata().unwrap().len();
-                drop(file);
-                let line = String::from_utf8_lossy(&buf);
-                let trade = Trade::from_line(&line).unwrap();
-                notify_trade(&ctx, &bot_name, &stats_channel, trade)
-                    .await
-                    .unwrap();
             }
         });
-        debug!("Set up watcher for {}", bot.trades_path.display());
     }
     return Ok(());
 }
@@ -200,6 +203,7 @@ async fn main() {
     let config = init_config(&args.config_path).unwrap();
     let intents = serenity::GatewayIntents::non_privileged();
     let bot_token = config.bot_token.clone();
+    let client = Arc::new(BackendAPIClient::new(config.backend_api_base_url.clone()));
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -209,8 +213,8 @@ async fn main() {
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                trade_loop(ctx, &config).await?;
-                Ok(Data { config })
+                trade_loop(ctx, &config, client.clone()).await?;
+                Ok(Data { config, client })
             })
         })
         .build();
