@@ -126,9 +126,7 @@ async fn notify_bot_stats<'c>(
         .filter_map(|b| {
             let chart = make_chart(b, cache);
             match chart {
-                Ok(chart) => {
-                    Some((b.name.to_string(), chart))
-                }
+                Ok(chart) => Some((b.name.to_string(), chart)),
                 Err(e) => {
                     warn!("Chart error (ignored): {}", e);
                     None
