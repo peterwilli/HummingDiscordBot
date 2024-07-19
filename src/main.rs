@@ -270,7 +270,7 @@ async fn trade_loop<'c>(
         tokio::spawn(async move {
             let mut last_timestamp: u64 = 0;
             loop {
-                sleep_until(Instant::now() + Duration::from_secs(1)).await;
+                sleep_until(Instant::now() + Duration::from_secs(10)).await;
                 let latest_trade = bot.get_latest_trade(&client).await;
                 match latest_trade {
                     Ok(trade) => {

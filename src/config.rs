@@ -28,7 +28,7 @@ impl<'c> Default for Config<'c> {
             bot_token: "MY_TOKEN".into(),
             stats_channel_id: 39923329,
             cache_path: PathBuf::from("/storage/mdh_discord/cache"),
-            backend_api_base_url: Url::parse("http://localhost:8084").unwrap(),
+            backend_api_base_url: Url::parse("http://backend-api:8000").unwrap(),
             scheduled_chart_announcement: ScheduledStats {
                 message: "Good morning! Here are the scheduled profits (or losses) from yesterdays operation 💸".into(),
                 schedule: "0 0 9 * * *".into(),
