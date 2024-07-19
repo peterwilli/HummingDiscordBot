@@ -1,6 +1,6 @@
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::HashMap};
+use std::{collections::HashMap};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

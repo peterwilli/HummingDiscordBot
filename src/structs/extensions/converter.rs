@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use rust_decimal::prelude::FromPrimitive;
+
 use rust_decimal::Decimal;
-use std::collections::HashMap;
+
 use std::str::FromStr;
 
 use crate::backend_api::objects::{ActiveBotsResponse, Trade};

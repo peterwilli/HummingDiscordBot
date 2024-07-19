@@ -15,7 +15,7 @@ use backend_api::client::BackendAPIClient;
 use clap::Parser;
 use config::Config;
 use futures::StreamExt;
-use headless_chrome::protocol::cdp::Performance;
+
 use log::debug;
 use log::error;
 use log::warn;
@@ -24,7 +24,7 @@ use poise::serenity_prelude::ChannelId;
 use poise::serenity_prelude::CreateAttachment;
 use poise::serenity_prelude::CreateEmbed;
 use poise::serenity_prelude::CreateMessage;
-use rust_decimal::prelude::*;
+
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
@@ -32,7 +32,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use structs::bot::Bot;
-use structs::bot_cache;
+
 use structs::bot_cache::BotCache;
 use structs::bot_cache::ControllerPNLHistoryEntry;
 use structs::extensions::converter::BotsConverter;
@@ -41,7 +41,7 @@ use structs::profit_chart::ChartDataEntry;
 use structs::trade::TradeSide;
 use tokio::time::sleep_until;
 use tokio::time::Instant;
-use tokio_cron_scheduler::{Job, JobScheduler, JobSchedulerError};
+use tokio_cron_scheduler::{Job, JobScheduler};
 use utils::beautify_bot_name::beautify_bot_name;
 use utils::unix_timestamp::unix_timestamp;
 
@@ -127,11 +127,11 @@ async fn notify_bot_stats<'c>(
             let chart = make_chart(b, cache);
             match chart {
                 Ok(chart) => {
-                    return Some((b.name.to_string(), chart));
+                    Some((b.name.to_string(), chart))
                 }
                 Err(e) => {
                     warn!("Chart error (ignored): {}", e);
-                    return None;
+                    None
                 }
             }
         })
