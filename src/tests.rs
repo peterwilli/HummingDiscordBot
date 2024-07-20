@@ -9,7 +9,7 @@ use crate::structs::extensions::converter::TradeConverter;
 async fn test_trade_api() {
     let client = BackendAPIClient::new(Url::from_str("http://localhost:8084").unwrap());
     let trade = client
-        .get_latest_trade("hummingbot-hyperliquid_test-2024.07.17_09.46")
+        .get_latest_trade("hummingbot-HateGhoster-2-2024.07.20_10.21")
         .await
         .unwrap()
         .unwrap();

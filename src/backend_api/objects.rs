@@ -2,12 +2,14 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct CloseTypeCounts {
-    #[serde(rename = "CloseType.EARLY_STOP")]
+    #[serde(rename = "CloseType.EARLY_STOP", default)]
     pub early_stop: u64,
-    #[serde(rename = "CloseType.TIME_LIMIT")]
+    #[serde(rename = "CloseType.TIME_LIMIT", default)]
     pub time_limit: u64,
+    #[serde(rename = "CloseType.TRAILING_STOP", default)]
+    pub trailing_stop: u64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

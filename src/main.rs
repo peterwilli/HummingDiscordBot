@@ -24,6 +24,7 @@ use poise::serenity_prelude::ChannelId;
 use poise::serenity_prelude::CreateAttachment;
 use poise::serenity_prelude::CreateEmbed;
 use poise::serenity_prelude::CreateMessage;
+use poise::CreateReply;
 
 use std::collections::HashMap;
 use std::fs;
@@ -75,6 +76,34 @@ fn make_chart(bot: &Bot<'_>, cache: &BotCache) -> Result<Vec<u8>> {
         );
     }
     chart_data.render_chart()
+}
+
+/// Test the stats announcement
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR"
+)]
+async fn stats_announcement_test(ctx: Context<'_, '_>) -> Result<(), Error> {
+    let builder = CreateReply::default()
+        .ephemeral(true)
+        .content("Testing stats announcement... Message should arrive soon");
+    ctx.send(builder).await?;
+    let data = ctx.data();
+    let bots = data.client.get_bots().await?;
+    let bots = bots.to_internal_bots();
+    take_pnl_sample(&bots, &data.cache);
+    let chart_announcement_channel =
+        ChannelId::new(data.config.scheduled_chart_announcement.channel_id);
+    notify_bot_stats(
+        ctx.serenity_context(),
+        &data.config.scheduled_chart_announcement.message,
+        &data.cache,
+        &data.client,
+        &chart_announcement_channel,
+    )
+    .await?;
+    Ok(())
 }
 
 /// Displays a profit chart
@@ -183,6 +212,23 @@ async fn notify_trade<'c>(
     Ok(())
 }
 
+fn take_pnl_sample<'c>(bots: &[Bot<'c>], cache: &BotCache) {
+    for bot in bots.iter() {
+        let mut cache_entry = cache.get_entry(&bot.name);
+        for (name, controller) in bot.controllers.iter() {
+            let controller_entry = cache_entry.controllers.entry(name.to_owned()).or_default();
+            controller_entry
+                .pnl_history
+                .push(ControllerPNLHistoryEntry {
+                    timestamp: unix_timestamp(),
+                    pct: controller.pnl.pct,
+                    quote: controller.pnl.quote,
+                })
+        }
+        cache.save_entry(&bot.name, cache_entry);
+    }
+}
+
 async fn pnl_cache_loop<'c>(
     ctx: poise::serenity_prelude::Context,
     config: &Config<'c>,
@@ -208,21 +254,7 @@ async fn pnl_cache_loop<'c>(
                 match bots {
                     Ok(bots) => {
                         let bots = bots.to_internal_bots();
-                        for bot in bots.iter() {
-                            let mut cache_entry = cache.get_entry(&bot.name);
-                            for (name, controller) in bot.controllers.iter() {
-                                let controller_entry =
-                                    cache_entry.controllers.entry(name.to_owned()).or_default();
-                                controller_entry
-                                    .pnl_history
-                                    .push(ControllerPNLHistoryEntry {
-                                        timestamp: unix_timestamp(),
-                                        pct: controller.pnl.pct,
-                                        quote: controller.pnl.quote,
-                                    })
-                            }
-                            cache.save_entry(&bot.name, cache_entry);
-                        }
+                        take_pnl_sample(&bots, &cache);
                         match notify_bot_stats(
                             &ctx,
                             &message,
@@ -327,7 +359,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![profit_chart()],
+            commands: vec![profit_chart(), stats_announcement_test()],
             ..Default::default()
         })
         .setup(move |ctx, _ready, framework| {
