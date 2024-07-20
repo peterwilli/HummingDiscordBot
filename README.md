@@ -16,6 +16,7 @@ We build for both ARM and X86 servers
   services:
     ...
     mdh_discord:
+        container_name: mdh_discord
         image: peterwilli/mdh-discord-bot
         restart: unless-stopped
         volumes:
