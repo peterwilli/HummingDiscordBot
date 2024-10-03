@@ -34,6 +34,6 @@ We build for both ARM and X86 servers
 - Run `docker compose up` which will pregenerate a config for you... Run `docker compose down` to stop the bot
 - In https://discord.com/developers, create a bot and copy the bot token in the config file that is generated in `./mdh_discord`
 - Create a channel on your server for trading updates, and copy the channel id in the config file (you may need to enable developer mode on Discord to be able to right click and copy the channel ID). Place this ID also in your new config file
-- Invite your bot (it doesn't need admin rights): `hkttps://discord.com/oauth2/authorize?client_id=<your bot client id>&permissions=515396455488&scope=bot` (add your client ID from the Discord Developers page)
+- Invite your bot (it doesn't need admin rights): `https://discord.com/oauth2/authorize?client_id=<your bot client id>&permissions=515396455488&scope=bot` (add your client ID from the Discord Developers page)
 - Run `docker compose up -d` for the final start! That should be all, your Discord bot will automatically see what bots you're running and will show trades accordingly.
 - Bonus: See the config.yml to enable other features, new features added frequently!
