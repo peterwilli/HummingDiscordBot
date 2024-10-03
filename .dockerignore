@@ -2,3 +2,6 @@
 ./Dockerfile
 ./nohup.out
 audit.json
+.DS_Store
+.git
+mdh_discord

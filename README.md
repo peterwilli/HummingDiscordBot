@@ -17,7 +17,7 @@ We build for both ARM and X86 servers
     ...
     mdh_discord:
         container_name: mdh_discord
-        image: peterwilli/mdh-discord-bot
+        image: public.ecr.aws/x1i4i6b9/mdh-discord-bot:latest
         restart: unless-stopped
         volumes:
           - "./mdh_discord:/storage/mdh_discord:rw"

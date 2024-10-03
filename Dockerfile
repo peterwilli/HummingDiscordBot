@@ -1,18 +1,22 @@
-FROM rust:1.75.0-slim-buster as rust_builder
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev perl make git && \
-    rm -rf /var/lib/apt/lists/*
-
+FROM --platform=$BUILDPLATFORM public.ecr.aws/x1i4i6b9/rust-musl-cross-builder AS rust_builder
 COPY ./ /src
-RUN cargo install --path /src
 
-FROM debian:buster-slim
+# Conditional compilation based on the target architecture
+ARG TARGETARCH
+RUN case ${TARGETARCH} in \
+    arm64) \
+    echo "Compiling for ARM64" && \
+    cargo install --path /src --target=aarch64-unknown-linux-musl ;; \
+    amd64) \
+    echo "Compiling for AMD64" && \
+    cargo install --path /src --target=x86_64-unknown-linux-musl ;; \
+    *) \
+    echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac
+
+FROM public.ecr.aws/docker/library/alpine:3.20.3
+RUN apk add chromium
+ENV CHROMIUM_USER_FLAGS="--disable-gpu --headless --no-sandbox --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --user-data-dir=/data"
 COPY --from=rust_builder /usr/local/cargo/bin/MDHBot /usr/local/bin/MDHBot
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    dumb-init chromium ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-ENV CHROMIUM_FLAGS="--disable-gpu --headless --no-sandbox  --remote-debugging-address=0.0.0.0  --remote-debugging-port=9222 --user-data-dir=/data"
 WORKDIR /storage
-ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/MDHBot"]
+ENTRYPOINT ["/usr/local/bin/MDHBot"]

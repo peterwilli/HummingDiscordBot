@@ -14,8 +14,6 @@ use args::Args;
 use backend_api::client::BackendAPIClient;
 use clap::Parser;
 use config::Config;
-use futures::StreamExt;
-
 use log::debug;
 use log::error;
 use log::warn;
@@ -25,15 +23,12 @@ use poise::serenity_prelude::CreateAttachment;
 use poise::serenity_prelude::CreateEmbed;
 use poise::serenity_prelude::CreateMessage;
 use poise::CreateReply;
-
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use structs::bot::Bot;
-
 use structs::bot_cache::BotCache;
 use structs::bot_cache::ControllerPNLHistoryEntry;
 use structs::extensions::converter::BotsConverter;
@@ -43,7 +38,7 @@ use structs::trade::TradeSide;
 use tokio::time::sleep_until;
 use tokio::time::Instant;
 use tokio_cron_scheduler::{Job, JobScheduler};
-use utils::beautify_bot_name::beautify_bot_name;
+use utils::extract_bot_name::extract_bot_name;
 use utils::unix_timestamp::unix_timestamp;
 
 struct Data<'c> {
@@ -132,7 +127,7 @@ async fn profit_chart(ctx: Context<'_, '_>) -> Result<(), Error> {
                     png_data,
                     format!("{}.png", bot.name),
                 )],
-                CreateMessage::default().content(&format!("Profit chart for **{}**", bot.name)),
+                CreateMessage::default().content(format!("Profit chart for **{}**", bot.name)),
             )
             .await?;
     }
@@ -199,7 +194,7 @@ async fn notify_trade<'c>(
             trade.side, trade.base_asset, trade.quote_asset
         ))
         .fields(vec![
-            ("Bot", beautify_bot_name(bot_name).as_str(), false),
+            ("Bot", extract_bot_name(bot_name)?, false),
             ("Amount", &trade.amount.to_string(), true),
             (
                 "Price",
@@ -212,7 +207,7 @@ async fn notify_trade<'c>(
     Ok(())
 }
 
-fn take_pnl_sample<'c>(bots: &[Bot<'c>], cache: &BotCache) {
+fn take_pnl_sample(bots: &[Bot<'_>], cache: &BotCache) {
     for bot in bots.iter() {
         let mut cache_entry = cache.get_entry(&bot.name);
         for (name, controller) in bot.controllers.iter() {
@@ -255,7 +250,7 @@ async fn pnl_cache_loop<'c>(
                     Ok(bots) => {
                         let bots = bots.to_internal_bots();
                         take_pnl_sample(&bots, &cache);
-                        match notify_bot_stats(
+                        if let Err(e) = notify_bot_stats(
                             &ctx,
                             &message,
                             &cache,
@@ -264,10 +259,7 @@ async fn pnl_cache_loop<'c>(
                         )
                         .await
                         {
-                            Err(e) => {
-                                warn!("Error (Ignored) notifying bot stats: {}", e);
-                            }
-                            _ => {}
+                            warn!("Error (Ignored) notifying bot stats: {}", e);
                         }
                     }
                     Err(e) => {
@@ -289,20 +281,25 @@ async fn pnl_cache_loop<'c>(
 }
 
 async fn trade_loop<'c>(
-    ctx: &poise::serenity_prelude::Context,
+    ctx: poise::serenity_prelude::Context,
     config: &Config<'c>,
     client: Arc<BackendAPIClient>,
 ) -> Result<()> {
-    let bots = client.get_bots().await?.to_internal_bots();
-    for bot in bots.into_iter() {
-        let ctx = ctx.clone();
-        let stats_channel = ChannelId::new(config.stats_channel_id);
-        let bot_name = bot.name.to_string();
-        let client = client.clone();
-        tokio::spawn(async move {
-            let mut last_timestamp: u64 = 0;
-            loop {
-                sleep_until(Instant::now() + Duration::from_secs(10)).await;
+    let stats_channel = ChannelId::new(config.stats_channel_id);
+    tokio::spawn(async move {
+        let mut timestamps: HashMap<String, u64> = HashMap::new();
+        loop {
+            sleep_until(Instant::now() + Duration::from_secs(10)).await;
+            let bots = match client.get_bots().await {
+                Ok(response) => response,
+                Err(e) => {
+                    warn!("get_bots error (ignored): {}", e);
+                    continue;
+                }
+            }
+            .to_internal_bots();
+            timestamps.retain(|k, _| bots.iter().any(|b| b.name == k.as_str()));
+            for bot in bots.into_iter() {
                 let latest_trade = bot.get_latest_trade(&client).await;
                 match latest_trade {
                     Ok(trade) => {
@@ -312,20 +309,21 @@ async fn trade_loop<'c>(
                                 continue;
                             }
                         };
-                        if last_timestamp != trade.timestamp {
-                            notify_trade(&ctx, &bot_name, &stats_channel, &trade)
+                        let last_timestamp = timestamps.entry(bot.name.to_string()).or_insert(0);
+                        if *last_timestamp != trade.timestamp {
+                            notify_trade(&ctx, &bot.name, &stats_channel, &trade)
                                 .await
                                 .unwrap();
-                            last_timestamp = trade.timestamp;
+                            *last_timestamp = trade.timestamp;
                         }
                     }
                     Err(e) => {
-                        error!("Error getting latest trade for bot {}: {}", bot_name, e);
+                        error!("Error getting latest trade for bot {}: {}", bot.name, e);
                     }
                 }
             }
-        });
-    }
+        }
+    });
     Ok(())
 }
 
@@ -355,7 +353,10 @@ async fn main() {
     let intents = serenity::GatewayIntents::non_privileged();
     let bot_token = config.bot_token.clone();
     let client = Arc::new(BackendAPIClient::new(config.backend_api_base_url.clone()));
-    let cache = Arc::new(BotCache::new(config.cache_path.clone()));
+    let cache = Arc::new(BotCache::new(
+        config.cache_path.clone(),
+        config.cache_strip_bot_names,
+    ));
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -365,7 +366,7 @@ async fn main() {
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                trade_loop(ctx, &config, client.clone()).await?;
+                trade_loop(ctx.clone(), &config, client.clone()).await?;
                 if config.scheduled_chart_announcement.enabled {
                     pnl_cache_loop(ctx.clone(), &config, client.clone(), cache.clone()).await?;
                 }

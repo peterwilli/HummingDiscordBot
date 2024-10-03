@@ -5,3 +5,4 @@
 audit.json
 config.yml
 docker-compose.yml
+.DS_Store
