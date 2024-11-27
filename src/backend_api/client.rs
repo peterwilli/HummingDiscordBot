@@ -1,6 +1,9 @@
+use std::env;
+
 use anyhow::anyhow;
 use anyhow::Result;
 use reqwest::Client;
+use reqwest::RequestBuilder;
 use url::Url;
 
 use super::objects::{ActiveBotsResponse, Trade, TradesResponse};
@@ -8,6 +11,17 @@ use super::objects::{ActiveBotsResponse, Trade, TradesResponse};
 pub struct BackendAPIClient {
     base_url: Url,
     client: Client,
+}
+
+fn add_basic_auth(rb: RequestBuilder) -> RequestBuilder {
+    if let (Ok(username), Ok(password)) = (
+        env::var("BACKEND_API_USERNAME"),
+        env::var("BACKEND_API_PASSWORD"),
+    ) {
+        rb.basic_auth(username, Some(password))
+    } else {
+        rb
+    }
 }
 
 impl BackendAPIClient {
@@ -20,7 +34,11 @@ impl BackendAPIClient {
 
     pub async fn get_bots(&self) -> Result<ActiveBotsResponse> {
         let url = self.base_url.join("get-active-bots-status").unwrap();
-        let resp = self.client.get(url.as_str()).send().await?.text().await?;
+        let resp = add_basic_auth(self.client.get(url.as_str()))
+            .send()
+            .await?
+            .text()
+            .await?;
         match serde_json::from_str::<ActiveBotsResponse>(&resp) {
             Ok(json) => Ok(json),
             Err(e) => Err(anyhow!(
@@ -42,7 +60,11 @@ impl BackendAPIClient {
             .base_url
             .join(&format!("get-bot-history/{}", bot_name))
             .unwrap();
-        let resp = self.client.get(url.as_str()).send().await?.text().await?;
+        let resp = add_basic_auth(self.client.get(url.as_str()))
+            .send()
+            .await?
+            .text()
+            .await?;
 
         match serde_json::from_str::<TradesResponse>(&resp) {
             Ok(json) => Ok(json.response.trades),
