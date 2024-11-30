@@ -36,7 +36,7 @@ const colors = {
     "#0066FF", // blue
     "#FFCC00", // orange
     "#0099CC", // teal
-  ]
+  ],
 };
 const botDataStr = decodeURIComponent(window.location.hash.substring(1));
 const botData = JSON.parse(botDataStr);
@@ -79,7 +79,7 @@ const options = {
         borderColor: color,
         data: botData.chartData[controllerName].map((entry) => {
           return {
-            x: entry.timestamp,
+            x: entry.timestamp * 1000,
             y: parseFloat(entry.profit),
           };
         }),
@@ -100,15 +100,15 @@ const options = {
     plugins: {
       decimation: {
         enabled: true,
-        algorithm: 'lttb',
-        samples: 1
-      }
+        algorithm: "lttb",
+        samples: 1,
+      },
     },
     scales: {
       x: {
         type: "time",
         ticks: {
-          source: 'auto',
+          source: "auto",
           // Disabled rotation for performance
           maxRotation: 0,
           autoSkip: true,
