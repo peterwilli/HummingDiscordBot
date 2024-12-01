@@ -6,7 +6,7 @@ use std::collections::HashMap;
 #[serde(rename_all = "camelCase")]
 pub struct ChartDataEntry {
     pub timestamp: u64,
-    pub profit: Decimal,
+    pub balance: Decimal,
 }
 
 #[derive(Serialize, Deserialize, Default)]

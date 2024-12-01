@@ -28,10 +28,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use structs::bot::Bot;
-use structs::bot_cache::BotCache;
-use structs::bot_cache::ControllerPNLHistoryEntry;
+use structs::bot_balance::BotBalance;
+use structs::extensions::converter::AccountStateConverter;
 use structs::extensions::converter::BotsConverter;
+use structs::jsonl_cache::JsonCache;
 use structs::profit_chart::ChartData;
 use structs::profit_chart::ChartDataEntry;
 use structs::trade::TradeSide;
@@ -39,36 +39,41 @@ use tokio::time::sleep_until;
 use tokio::time::Instant;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use utils::extract_bot_name::extract_bot_name;
-use utils::unix_timestamp::unix_timestamp;
 
 struct Data<'c> {
     config: Config<'c>,
     client: Arc<BackendAPIClient>,
-    cache: Arc<BotCache>,
+    cache: Arc<JsonCache<BotBalance>>,
 } // User data, which is stored and accessible in all command invocations
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'c, 'a> = poise::Context<'a, Data<'c>, Error>;
 
-fn make_chart(bot: &Bot<'_>, cache: &BotCache) -> Result<Vec<u8>> {
+fn make_chart(cache: &JsonCache<BotBalance>) -> Result<Vec<u8>> {
     let mut chart_data = ChartData {
         ..Default::default()
     };
-    let cache_entry = cache.get_entry(&bot.name);
-    if cache_entry.controllers.is_empty() {
-        return Err(anyhow!("No controllers found for bot {}", bot.name));
-    }
-    for (k, controller) in cache_entry.controllers.iter() {
-        chart_data.chart_data.insert(
-            k.to_owned(),
-            controller
-                .pnl_history
-                .iter()
-                .map(|h| ChartDataEntry {
-                    timestamp: h.timestamp,
-                    profit: h.pct,
-                })
-                .collect(),
-        );
+    for balance in cache.get_all_objects().unwrap().iter() {
+        let merged_balance = balance.merge_across_exchanges();
+        for (account, entries) in merged_balance.iter() {
+            if chart_data.chart_data.contains_key(account) {
+                let to_add_to = chart_data.chart_data.get_mut(account).unwrap();
+                to_add_to.extend(entries.iter().map(|x| ChartDataEntry {
+                    timestamp: balance.timestamp,
+                    balance: x.amount,
+                }));
+            } else {
+                chart_data.chart_data.insert(
+                    account.clone(),
+                    entries
+                        .iter()
+                        .map(|x| ChartDataEntry {
+                            timestamp: balance.timestamp,
+                            balance: x.amount,
+                        })
+                        .collect(),
+                );
+            }
+        }
     }
     chart_data.render_chart()
 }
@@ -85,16 +90,26 @@ async fn stats_announcement_test(ctx: Context<'_, '_>) -> Result<(), Error> {
         .content("Testing stats announcement... Message should arrive soon");
     ctx.send(builder).await?;
     let data = ctx.data();
-    let bots = data.client.get_bots().await?;
-    let bots = bots.to_internal_bots();
-    take_pnl_sample(&bots, &data.cache);
     let chart_announcement_channel =
         ChannelId::new(data.config.scheduled_chart_announcement.channel_id);
+
+    if data.cache.is_empty() {
+        let account_state = data.client.get_account_state().await;
+        match account_state {
+            Ok(account_state) => {
+                let balance_entry = account_state.to_bot_balance();
+                data.cache.write(balance_entry).unwrap();
+            }
+            Err(e) => {
+                warn!("Error (Ignored) getting bots from cache: {}", e);
+            }
+        }
+    }
+
     notify_bot_stats(
         ctx.serenity_context(),
         &data.config.scheduled_chart_announcement.message,
         &data.cache,
-        &data.client,
         &chart_announcement_channel,
     )
     .await?;
@@ -106,31 +121,33 @@ async fn stats_announcement_test(ctx: Context<'_, '_>) -> Result<(), Error> {
 async fn profit_chart(ctx: Context<'_, '_>) -> Result<(), Error> {
     let reply = ctx.reply("Starting to post the charts!").await?;
     let data = ctx.data();
-    let bots = data.client.get_bots().await?;
-    let bots = bots.to_internal_bots();
-    for (idx, bot) in bots.iter().enumerate() {
-        reply
-            .edit(
-                ctx,
-                poise::CreateReply::default().content(format!(
-                    "Posting chart {}/{}",
-                    idx + 1,
-                    bots.len()
-                )),
-            )
-            .await?;
-        let png_data = make_chart(bot, &data.cache)?;
-        ctx.channel_id()
-            .send_files(
-                ctx,
-                vec![CreateAttachment::bytes(
-                    png_data,
-                    format!("{}.png", bot.name),
-                )],
-                CreateMessage::default().content(format!("Profit chart for **{}**", bot.name)),
-            )
-            .await?;
+
+    if data.cache.is_empty() {
+        let account_state = data.client.get_account_state().await;
+        match account_state {
+            Ok(account_state) => {
+                let balance_entry = account_state.to_bot_balance();
+                data.cache.write(balance_entry).unwrap();
+            }
+            Err(e) => {
+                warn!("Error (Ignored) getting bots from cache: {}", e);
+            }
+        }
     }
+
+    let graph = make_chart(&data.cache)?;
+    if graph.is_empty() {
+        return Ok(());
+    }
+
+    ctx.channel_id()
+        .send_files(
+            ctx,
+            vec![CreateAttachment::bytes(graph, "graph.png")],
+            CreateMessage::default().content("Current profits / losses"),
+        )
+        .await?;
+
     reply
         .edit(ctx, poise::CreateReply::default().content("Done!"))
         .await?;
@@ -140,36 +157,18 @@ async fn profit_chart(ctx: Context<'_, '_>) -> Result<(), Error> {
 async fn notify_bot_stats<'c>(
     ctx: &poise::serenity_prelude::Context,
     message: &str,
-    cache: &BotCache,
-    client: &BackendAPIClient,
+    cache: &Arc<JsonCache<BotBalance>>,
     channel: &ChannelId,
 ) -> Result<()> {
-    let bots = client.get_bots().await?.to_internal_bots();
-    let graphs = bots
-        .iter()
-        .filter_map(|b| {
-            let chart = make_chart(b, cache);
-            match chart {
-                Ok(chart) => Some((b.name.to_string(), chart)),
-                Err(e) => {
-                    warn!("Chart error (ignored): {}", e);
-                    None
-                }
-            }
-        })
-        .collect::<HashMap<String, Vec<u8>>>();
-
-    if graphs.is_empty() {
+    let graph = make_chart(cache)?;
+    if graph.is_empty() {
         return Ok(());
     }
 
     channel
         .send_files(
             ctx,
-            graphs
-                .into_iter()
-                .map(|(name, bytes)| CreateAttachment::bytes(bytes, format!("{}.png", name)))
-                .collect::<Vec<CreateAttachment>>(),
+            vec![CreateAttachment::bytes(graph, "graph.png")],
             CreateMessage::default().content(message),
         )
         .await?;
@@ -207,28 +206,11 @@ async fn notify_trade<'c>(
     Ok(())
 }
 
-fn take_pnl_sample(bots: &[Bot<'_>], cache: &BotCache) {
-    for bot in bots.iter() {
-        let mut cache_entry = cache.get_entry(&bot.name);
-        for (name, controller) in bot.controllers.iter() {
-            let controller_entry = cache_entry.controllers.entry(name.to_owned()).or_default();
-            controller_entry
-                .pnl_history
-                .push(ControllerPNLHistoryEntry {
-                    timestamp: unix_timestamp(),
-                    pct: controller.pnl.pct,
-                    quote: controller.pnl.quote,
-                })
-        }
-        cache.save_entry(&bot.name, cache_entry);
-    }
-}
-
 async fn pnl_cache_loop<'c>(
     ctx: poise::serenity_prelude::Context,
     config: &Config<'c>,
     client: Arc<BackendAPIClient>,
-    cache: Arc<BotCache>,
+    cache: Arc<JsonCache<BotBalance>>,
 ) -> Result<()> {
     let sched = JobScheduler::new().await?;
     let message = config
@@ -245,19 +227,14 @@ async fn pnl_cache_loop<'c>(
             let message = message.clone();
             let ctx = ctx.clone();
             Box::pin(async move {
-                let bots = client.get_bots().await;
-                match bots {
-                    Ok(bots) => {
-                        let bots = bots.to_internal_bots();
-                        take_pnl_sample(&bots, &cache);
-                        if let Err(e) = notify_bot_stats(
-                            &ctx,
-                            &message,
-                            &cache,
-                            &client,
-                            &chart_announcement_channel,
-                        )
-                        .await
+                let account_state = client.get_account_state().await;
+                match account_state {
+                    Ok(account_state) => {
+                        let balance_entry = account_state.to_bot_balance();
+                        cache.write(balance_entry).unwrap();
+                        if let Err(e) =
+                            notify_bot_stats(&ctx, &message, &cache, &chart_announcement_channel)
+                                .await
                         {
                             warn!("Error (Ignored) notifying bot stats: {}", e);
                         }
@@ -332,6 +309,7 @@ fn init_config<'c>(path: &PathBuf) -> Result<Config<'c>> {
         let bytes = std::fs::read(path)?;
         let contents = String::from_utf8_lossy(&bytes);
         let config: Config = serde_yaml::from_str(&contents)?;
+        fs::create_dir_all(&config.cache_path)?;
         Ok(config)
     } else {
         let default_config = Config::default();
@@ -353,10 +331,7 @@ async fn main() {
     let intents = serenity::GatewayIntents::non_privileged();
     let bot_token = config.bot_token.clone();
     let client = Arc::new(BackendAPIClient::new(config.backend_api_base_url.clone()));
-    let cache = Arc::new(BotCache::new(
-        config.cache_path.clone(),
-        config.cache_strip_bot_names,
-    ));
+    let cache = Arc::new(JsonCache::new(config.cache_path.join("balance.jsonl")));
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {

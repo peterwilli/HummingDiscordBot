@@ -70,17 +70,17 @@ Chart.defaults.color = "#ddd";
 const options = {
   type: "line",
   data: {
-    datasets: Object.keys(botData.chartData).map((controllerName, index) => {
+    datasets: Object.keys(botData.chartData).map((accountName, index) => {
       const color = colors.lines[index % colors.lines.length];
       return {
-        label: controllerName,
+        label: `${accountName} balance (USD)`,
         backgroundColor: gradient,
         pointRadius: 0,
         borderColor: color,
-        data: botData.chartData[controllerName].map((entry) => {
+        data: botData.chartData[accountName].map((entry) => {
           return {
             x: entry.timestamp * 1000,
-            y: parseFloat(entry.profit),
+            y: parseFloat(entry.balance),
           };
         }),
         lineTension: 0.1,
@@ -121,7 +121,7 @@ const options = {
       y: {
         title: {
           display: true,
-          text: "Profit (%)",
+          text: "Balance",
         },
       },
     },

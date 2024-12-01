@@ -69,3 +69,14 @@ pub struct TradesResponse {
     pub status: String,
     pub response: TradesResponseInner,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenUnits {
+    pub token: String,
+    pub units: Decimal,
+    pub price: Decimal,
+    pub value: Decimal,
+    pub available_units: Decimal,
+}
+
+pub type Account = HashMap<String, HashMap<String, Vec<TokenUnits>>>;

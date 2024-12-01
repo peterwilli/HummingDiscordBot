@@ -6,6 +6,7 @@ use reqwest::Client;
 use reqwest::RequestBuilder;
 use url::Url;
 
+use super::objects::Account;
 use super::objects::{ActiveBotsResponse, Trade, TradesResponse};
 
 pub struct BackendAPIClient {
@@ -53,6 +54,25 @@ impl BackendAPIClient {
     pub async fn get_latest_trade(&self, bot_name: &str) -> Result<Option<Trade>> {
         let trades = self.get_trades(bot_name).await?;
         return Ok(trades.last().cloned());
+    }
+
+    pub async fn get_account_state(&self) -> Result<Account> {
+        let url = self.base_url.join("accounts-state").unwrap();
+        let resp = add_basic_auth(self.client.get(url.as_str()))
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        match serde_json::from_str::<Account>(&resp) {
+            Ok(json) => Ok(json),
+            Err(e) => Err(anyhow!(
+                "Failed parsing response for {}. Body: {}\nError: {}",
+                url,
+                resp,
+                e
+            )),
+        }
     }
 
     pub async fn get_trades(&self, bot_name: &str) -> Result<Vec<Trade>> {
