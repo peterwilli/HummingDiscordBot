@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils::unix_timestamp::unix_timestamp;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct BotBalance {
     pub accounts: HashMap<String, HashMap<String, Vec<BotBalanceEntry>>>,
     pub timestamp: u64,
@@ -20,7 +20,7 @@ impl Default for BotBalance {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct BotBalanceEntry {
     pub coin: String,
     pub amount: Decimal,

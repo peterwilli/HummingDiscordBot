@@ -122,16 +122,20 @@ async fn profit_chart(ctx: Context<'_, '_>) -> Result<(), Error> {
     let reply = ctx.reply("Starting to post the charts!").await?;
     let data = ctx.data();
 
-    if data.cache.is_empty() {
-        let account_state = data.client.get_account_state().await;
-        match account_state {
-            Ok(account_state) => {
-                let balance_entry = account_state.to_bot_balance();
+    let account_state = data.client.get_account_state().await;
+    match account_state {
+        Ok(account_state) => {
+            let mut last_entry = data.cache.get_last_objects(1)?;
+            let balance_entry = account_state.to_bot_balance();
+            if !last_entry.is_empty() {
+                last_entry[0].timestamp = balance_entry.timestamp;
+            }
+            if last_entry.is_empty() || last_entry[0] != balance_entry {
                 data.cache.write(balance_entry).unwrap();
             }
-            Err(e) => {
-                warn!("Error (Ignored) getting bots from cache: {}", e);
-            }
+        }
+        Err(e) => {
+            warn!("Error (Ignored) getting bots from cache: {}", e);
         }
     }
 
